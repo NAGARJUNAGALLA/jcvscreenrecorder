@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.studyreader">
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Screen Recording & Audio -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -14,7 +14,9 @@
         android:allowBackup="true"
         android:label="StudyReader"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AppCompat.Light.NoActionBar">
+        android:theme="@style/Theme.AppCompat.Light.NoActionBar"
+        tools:replace="android:appComponentFactory"
+        android:appComponentFactory="androidx.core.app.CoreComponentFactory">
         
         <activity
             android:name=".MainActivity"
