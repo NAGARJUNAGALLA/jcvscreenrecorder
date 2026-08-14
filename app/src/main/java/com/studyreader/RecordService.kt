@@ -13,7 +13,9 @@ import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 
@@ -23,6 +25,14 @@ class RecordService : Service() {
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var mediaRecorder: MediaRecorder? = null
+
+    // Android 14+ Required Callback
+    private val projectionCallback = object : MediaProjection.Callback() {
+        override fun onStop() {
+            super.onStop()
+            stopRecording()
+        }
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
@@ -93,6 +103,11 @@ class RecordService : Service() {
 
             if (data != null) {
                 mediaProjection = projectionManager.getMediaProjection(resultCode, data)
+                
+                // === THE FIX ===
+                // Register the callback required by Android 14 to manage resources
+                mediaProjection?.registerCallback(projectionCallback, Handler(Looper.getMainLooper()))
+
                 virtualDisplay = mediaProjection?.createVirtualDisplay(
                     "ScreenRecord",
                     1280, 720, resources.displayMetrics.densityDpi,
@@ -118,7 +133,11 @@ class RecordService : Service() {
             e.printStackTrace()
         }
         virtualDisplay?.release()
+        
+        // Unregister the callback when stopping
+        mediaProjection?.unregisterCallback(projectionCallback)
         mediaProjection?.stop()
+        
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
