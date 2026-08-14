@@ -10,7 +10,10 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
 
-class FloatingUI(private val context: Context) {
+class FloatingUI(
+    private val context: Context,
+    private val onRecordClick: () -> Unit
+) {
     private var windowManager: WindowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private var floatingView: View? = null
 
@@ -33,21 +36,21 @@ class FloatingUI(private val context: Context) {
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = 100
-            y = 200
+            y = 300
         }
 
-        // Programmatically created floating control bar (no XML file required)
         val layout = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(Color.parseColor("#CC000000"))
-            setPadding(16, 16, 16, 16)
+            setPadding(20, 16, 20, 16)
         }
 
         val btnRecord = Button(context).apply {
             text = "⏺ Record"
-            setTextColor(Color.WHITE)
+            setTextColor(Color.RED)
             setOnClickListener {
-                hide()
+                hide() // Hides floating UI so it does NOT appear inside the screen recording video!
+                onRecordClick() // Triggers Android screen record permission dialog
             }
         }
 
