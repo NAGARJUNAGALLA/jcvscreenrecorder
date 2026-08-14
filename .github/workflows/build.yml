@@ -20,14 +20,13 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Grant Execute Permission to Gradle
-        run: chmod +x ./gradlew || true
+      - name: Setup Specific Gradle Version
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.4'
 
       - name: Build APK with Gradle
-        run: |
-          # Auto-generate a gradle wrapper if it doesn't exist
-          gradle wrapper --gradle-version 8.4
-          ./gradlew assembleDebug --no-daemon
+        run: gradle assembleDebug --no-daemon
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
