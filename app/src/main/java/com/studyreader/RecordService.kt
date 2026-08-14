@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.MediaRecorder
@@ -13,6 +14,7 @@ import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 
 class RecordService : Service() {
@@ -26,10 +28,16 @@ class RecordService : Service() {
         val action = intent?.action
         
         when (action) {
-            "START_RECORDING" -> startRecording(intent)
-            "PAUSE_RECORDING" -> pauseRecording()
+            "START_RECORDING" -> {
+                val notification = createNotification("Recording in progress...")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+                } else {
+                    startForeground(1, notification)
+                }
+                startRecording(intent)
+            }
             "STOP_RECORDING" -> stopRecording()
-            else -> startForeground(1, createNotification("Ready to Record"))
         }
         return START_NOT_STICKY
     }
@@ -48,58 +56,56 @@ class RecordService : Service() {
             .setContentTitle("StudyReader Recorder")
             .setContentText(statusText)
             .setSmallIcon(android.R.drawable.ic_menu_camera)
-            .addAction(android.R.drawable.ic_media_pause, "Stop", stopPendingIntent)
+            .addAction(android.R.drawable.ic_media_pause, "Stop Recording", stopPendingIntent)
             .build()
     }
 
     private fun startRecording(intent: Intent) {
-        val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.notify(1, createNotification("Recording in progress..."))
+        try {
+            val outputFile = getExternalFilesDir(null)?.absolutePath + "/study_session.mp4"
 
-        val outputFile = getExternalFilesDir(null)?.absolutePath + "/study_session.mp4"
+            mediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                MediaRecorder(this)
+            } else {
+                @Suppress("DEPRECATION")
+                MediaRecorder()
+            }.apply {
+                setAudioSource(MediaRecorder.AudioSource.MIC)
+                setVideoSource(MediaRecorder.VideoSource.SURFACE)
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                setVideoEncoder(MediaRecorder.VideoEncoder.H264)
+                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                setVideoEncodingBitRate(5120000)
+                setVideoFrameRate(30)
+                setVideoSize(1280, 720)
+                setOutputFile(outputFile)
+                prepare()
+            }
 
-        mediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            MediaRecorder(this)
-        } else {
-            @Suppress("DEPRECATION")
-            MediaRecorder()
-        }.apply {
-            setAudioSource(MediaRecorder.AudioSource.MIC)
-            setVideoSource(MediaRecorder.VideoSource.SURFACE)
-            setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-            setVideoEncoder(MediaRecorder.VideoEncoder.H264)
-            setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-            setVideoEncodingBitRate(5120000)
-            setVideoFrameRate(30)
-            setVideoSize(1280, 720)
-            setOutputFile(outputFile)
-            prepare()
-        }
+            val projectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            val resultCode = intent.getIntExtra("code", -1)
+            val data = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra("data", Intent::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra("data")
+            }
 
-        val projectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        val resultCode = intent.getIntExtra("code", -1)
-        val data = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent.getParcelableExtra("data", Intent::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            intent.getParcelableExtra("data")
-        }
-
-        if (data != null) {
-            mediaProjection = projectionManager.getMediaProjection(resultCode, data)
-            virtualDisplay = mediaProjection?.createVirtualDisplay(
-                "ScreenRecord",
-                1280, 720, resources.displayMetrics.densityDpi,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                mediaRecorder?.surface, null, null
-            )
-            mediaRecorder?.start()
-        }
-    }
-
-    private fun pauseRecording() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            mediaRecorder?.pause()
+            if (data != null) {
+                mediaProjection = projectionManager.getMediaProjection(resultCode, data)
+                virtualDisplay = mediaProjection?.createVirtualDisplay(
+                    "ScreenRecord",
+                    1280, 720, resources.displayMetrics.densityDpi,
+                    DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                    mediaRecorder?.surface, null, null
+                )
+                mediaRecorder?.start()
+                Toast.makeText(this, "Recording started!", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "Failed to start recording: ${e.message}", Toast.LENGTH_LONG).show()
+            stopSelf()
         }
     }
 
@@ -107,6 +113,7 @@ class RecordService : Service() {
         try {
             mediaRecorder?.stop()
             mediaRecorder?.reset()
+            Toast.makeText(this, "Recording saved!", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             e.printStackTrace()
         }
