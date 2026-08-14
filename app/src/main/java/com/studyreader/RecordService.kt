@@ -1,4 +1,4 @@
-package com.yourname.studyreader
+package com.studyreader
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -11,6 +11,7 @@ import android.hardware.display.VirtualDisplay
 import android.media.MediaRecorder
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
+import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 
@@ -34,66 +35,81 @@ class RecordService : Service() {
     }
 
     private fun createNotification(statusText: String): Notification {
-        val channel = NotificationChannel(CHANNEL_ID, "Recording Service", NotificationManager.IMPORTANCE_LOW)
-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(CHANNEL_ID, "Recording Service", NotificationManager.IMPORTANCE_LOW)
+            getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
+        }
 
-        // Intents for the notification buttons
         val stopIntent = Intent(this, RecordService::class.java).setAction("STOP_RECORDING")
-        val stopPendingIntent = PendingIntent.getService(this, 0, stopIntent, PendingIntent.FLAG_IMMUTABLE)
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+        val stopPendingIntent = PendingIntent.getService(this, 0, stopIntent, flags)
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("StudyReader Recorder")
             .setContentText(statusText)
-            .setSmallIcon(R.drawable.ic_record) // Replace with your icon
-            .addAction(R.drawable.ic_stop, "Stop", stopPendingIntent)
-            .addAction(R.drawable.ic_pen, "Pen Tool", /* pending intent for pen */ null)
+            .setSmallIcon(android.R.drawable.ic_menu_camera)
+            .addAction(android.R.drawable.ic_media_pause, "Stop", stopPendingIntent)
             .build()
     }
 
     private fun startRecording(intent: Intent) {
-        // 1. Update Notification
-        val notificationManager = getSystemService(NotificationManager::class.java)
+        val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.notify(1, createNotification("Recording in progress..."))
 
-        // 2. Setup Media Recorder (MP4)
-        mediaRecorder = MediaRecorder().apply {
+        val outputFile = getExternalFilesDir(null)?.absolutePath + "/study_session.mp4"
+
+        mediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            MediaRecorder(this)
+        } else {
+            @Suppress("DEPRECATION")
+            MediaRecorder()
+        }.apply {
             setAudioSource(MediaRecorder.AudioSource.MIC)
             setVideoSource(MediaRecorder.VideoSource.SURFACE)
             setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             setVideoEncoder(MediaRecorder.VideoEncoder.H264)
             setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-            setVideoEncodingBitRate(512 * 1000)
+            setVideoEncodingBitRate(5120000)
             setVideoFrameRate(30)
-            setVideoSize(1280, 720) // 16:9 Aspect Ratio
-            setOutputFile(getExternalFilesDir(null)?.absolutePath + "/study_session.mp4")
+            setVideoSize(1280, 720)
+            setOutputFile(outputFile)
             prepare()
         }
 
-        // 3. Start Projection
         val projectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         val resultCode = intent.getIntExtra("code", -1)
-        val data = intent.getParcelableExtra<Intent>("data")
-        
-        mediaProjection = projectionManager.getMediaProjection(resultCode, data!!)
-        
-        virtualDisplay = mediaProjection?.createVirtualDisplay(
-            "ScreenRecord",
-            1280, 720, resources.displayMetrics.densityDpi,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            mediaRecorder?.surface, null, null
-        )
+        val data = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra("data", Intent::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra("data")
+        }
 
-        mediaRecorder?.start()
+        if (data != null) {
+            mediaProjection = projectionManager.getMediaProjection(resultCode, data)
+            virtualDisplay = mediaProjection?.createVirtualDisplay(
+                "ScreenRecord",
+                1280, 720, resources.displayMetrics.densityDpi,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                mediaRecorder?.surface, null, null
+            )
+            mediaRecorder?.start()
+        }
     }
 
     private fun pauseRecording() {
-        mediaRecorder?.pause()
-        // Update notification to show "Paused"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            mediaRecorder?.pause()
+        }
     }
 
     private fun stopRecording() {
-        mediaRecorder?.stop()
-        mediaRecorder?.reset()
+        try {
+            mediaRecorder?.stop()
+            mediaRecorder?.reset()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
         virtualDisplay?.release()
         mediaProjection?.stop()
         stopForeground(STOP_FOREGROUND_REMOVE)
