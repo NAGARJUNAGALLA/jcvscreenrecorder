@@ -1,37 +1,68 @@
-package com.yourname.studyreader
+package com.studyreader
 
 import android.content.Context
+import android.graphics.Color
 import android.graphics.PixelFormat
+import android.os.Build
 import android.view.Gravity
-import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
+import android.widget.Button
+import android.widget.LinearLayout
 
 class FloatingUI(private val context: Context) {
     private var windowManager: WindowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private var floatingView: View? = null
 
     fun show() {
+        if (floatingView != null) return
+
+        val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
+
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, // Required for drawing over other apps
+            layoutType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
-        )
-        params.gravity = Gravity.TOP or Gravity.START
-        params.x = 100
-        params.y = 200
-
-        // Inflate your custom XML layout containing the Record/Pen buttons
-        floatingView = LayoutInflater.from(context).inflate(R.layout.layout_floating_widget, null)
-        
-        // Example: Hide widget when record is clicked so it isn't in the video
-        floatingView?.findViewById<View>(R.id.btn_record)?.setOnClickListener {
-            hide()
-            // TODO: Send intent to RecordService to start recording
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = 100
+            y = 200
         }
 
+        // Programmatically created floating control bar (no XML file required)
+        val layout = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(Color.parseColor("#CC000000"))
+            setPadding(16, 16, 16, 16)
+        }
+
+        val btnRecord = Button(context).apply {
+            text = "⏺ Record"
+            setTextColor(Color.WHITE)
+            setOnClickListener {
+                hide()
+            }
+        }
+
+        val btnClose = Button(context).apply {
+            text = "✕"
+            setTextColor(Color.WHITE)
+            setOnClickListener {
+                hide()
+            }
+        }
+
+        layout.addView(btnRecord)
+        layout.addView(btnClose)
+
+        floatingView = layout
         windowManager.addView(floatingView, params)
     }
 
